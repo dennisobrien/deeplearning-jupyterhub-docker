@@ -1,259 +1,119 @@
-FROM nvidia/cuda:8.0-cudnn7-devel-ubuntu16.04
+FROM jupyter/datascience-notebook
 
-# Based on the work of many others
-# https://github.com/floydhub/dl-docker/blob/master/Dockerfile.gpu
+USER root
 
-MAINTAINER Dennis O'Brien <dennis@dennisobrien.net>
+# Install all OS dependencies for fully functional notebook server
+RUN apt-get update --fix-missing && \
+    apt-get -y install \
+    build-essential \
+    cmake \
+    curl \
+    htop \
+    libfreetype6-dev \
+    libpng12-dev \
+    libzmq3-dev \
+    nano \
+    openssh-client \
+    pkg-config \
+    python \
+    python-dev \
+    rsync \
+    software-properties-common \
+    unzip \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-ARG THEANO_VERSION=rel-0.8.2
-ARG TENSORFLOW_VERSION=0.12.1
-ARG TENSORFLOW_ARCH=gpu
-ARG KERAS_VERSION=1.2.0
-ARG LASAGNE_VERSION=v0.1
-ARG TORCH_VERSION=latest
-ARG CAFFE_VERSION=master
+#
+# CUDA and CUDnn
+# This section is a copy/paste from two nvidia docker images.
+#
+# https://gitlab.com/nvidia/cuda/blob/ubuntu16.04/8.0/runtime/Dockerfile
+RUN NVIDIA_GPGKEY_SUM=d1be581509378368edeec8c1eb2958702feedf3bc3d17011adbf24efacce4ab5 && \
+    NVIDIA_GPGKEY_FPR=ae09fe4bbd223a84b2ccfce3f60f4b3d7fa2af80 && \
+    apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/7fa2af80.pub && \
+    apt-key adv --export --no-emit-version -a $NVIDIA_GPGKEY_FPR | tail -n +5 > cudasign.pub && \
+    echo "$NVIDIA_GPGKEY_SUM  cudasign.pub" | sha256sum -c --strict - && rm cudasign.pub && \
+    echo "deb http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64 /" > /etc/apt/sources.list.d/cuda.list
+ENV CUDA_VERSION 8.0.61
+ENV CUDA_PKG_VERSION 8-0=$CUDA_VERSION-1
+#RUN apt-get update && apt-get install -y --no-install-recommends \
+#        cuda-nvrtc-$CUDA_PKG_VERSION \
+#        cuda-nvgraph-$CUDA_PKG_VERSION \
+#        cuda-cusolver-$CUDA_PKG_VERSION \
+#        cuda-cublas-8-0=8.0.61.2-1 \
+#        cuda-cufft-$CUDA_PKG_VERSION \
+#        cuda-curand-$CUDA_PKG_VERSION \
+#        cuda-cusparse-$CUDA_PKG_VERSION \
+#        cuda-npp-$CUDA_PKG_VERSION \
+#        cuda-cudart-$CUDA_PKG_VERSION && \
+#    ln -s cuda-8.0 /usr/local/cuda && \
+#    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends cuda-$CUDA_PKG_VERSION && \
+    ln -s cuda-8.0 /usr/local/cuda && \
+    rm -rf /var/lib/apt/lists/*
+# nvidia-docker 1.0
+LABEL com.nvidia.volumes.needed="nvidia_driver"
+LABEL com.nvidia.cuda.version="${CUDA_VERSION}"
+RUN echo "/usr/local/nvidia/lib" >> /etc/ld.so.conf.d/nvidia.conf && \
+    echo "/usr/local/nvidia/lib64" >> /etc/ld.so.conf.d/nvidia.conf
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH /usr/local/nvidia/lib:/usr/local/nvidia/lib64
+# nvidia-container-runtime
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
+ENV NVIDIA_REQUIRE_CUDA "cuda>=8.0"
 
-RUN echo -e "\n**********************\nNVIDIA Driver Version\n**********************\n" && \
-    cat /proc/driver/nvidia/version && \
-    echo -e "\n**********************\nCUDA Version\n**********************\n" && \
-    nvcc -V && \
-    echo -e "\n\nBuilding your Deep Learning Docker Image...\n"
+# https://gitlab.com/nvidia/cuda/blob/ubuntu16.04/8.0/runtime/cudnn6/Dockerfile
+RUN echo "deb http://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1604/x86_64 /" > /etc/apt/sources.list.d/nvidia-ml.list
+ENV CUDNN_VERSION 6.0.21
+LABEL com.nvidia.cudnn.version="${CUDNN_VERSION}"
+RUN apt-get update && apt-get install -y --no-install-recommends \
+            libcudnn6=$CUDNN_VERSION-1+cuda8.0 && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install some dependencies
-RUN apt-get update && apt-get install -y \
-        ant \
-        bc \
-        build-essential \
-        cmake \
-        curl \
-        default-jdk \
-        doxygen \
-        g++ \
-        gfortran \
-        git \
-        libavcodec-dev \
-        libavformat-dev \
-        libcupti-dev \
-        libffi-dev \
-        libfreetype6-dev \
-        libhdf5-dev \
-        libjpeg-dev \
-        liblcms2-dev \
-        libopenblas-dev \
-        liblapack-dev \
-        libopenjpeg5 \
-        libpng12-dev \
-        libssl-dev \
-        libtiff5-dev \
-        libvtk6-dev \
-        libwebp-dev \
-        libzmq3-dev \
-        libjpeg-dev \
-        libwebp-dev \
-        libpng-dev \
-        libtiff5-dev \
-        libjasper-dev \
-        libopencore-amrnb-dev \
-        libopencore-amrwb-dev \
-        libv4l-dev \
-        libxine2-dev \
-        libtbb-dev \
-        libeigen3-dev \
-        libopenexr-dev \
-        libgdal-dev \
-        libdc1394-22-dev \
-        libswscale-dev \
-        libtheora-dev \
-        libvorbis-dev \
-        libxvidcore-dev \
-        libx264-dev \
-        nano \
-        nodejs-legacy \
-        npm \
-        pkg-config \
-        python-dev \
-        python-tk \
-        python-numpy \
-        python3-dev \
-        python3-tk \
-        python3-numpy \
-        qt5-default \
-        software-properties-common \
-        unzip \
-        vim \
-        wget \
-        zlib1g-dev \
-        zlib1g-dev \
-        yasm \
-        && \
-    apt-get clean && \
-    apt-get autoremove && \
-    rm -rf /var/lib/apt/lists/* && \
-# Link BLAS library to use OpenBLAS using the alternatives mechanism (https://www.scipy.org/scipylib/building/linux.html#debian-ubuntu)
-    update-alternatives --set libblas.so.3 /usr/lib/openblas-base/libblas.so.3
+ENV CUDA_BIN_PATH=/usr/local/cuda
+ENV CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-8.0
 
-# Install miniconda
-RUN echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh && \
-    wget --no-verbose -O ~/miniconda.sh https://repo.continuum.io/miniconda/Miniconda3-4.3.21-Linux-x86_64.sh && \
-    /bin/bash ~/miniconda.sh -b -p /opt/conda && \
-    rm ~/miniconda.sh
 
-ENV PATH /opt/conda/bin:$PATH
-COPY conda-env-py3.yml conda-env-py3.yml
-RUN conda env create --file conda-env-py3.yml \
+USER $NB_USER
+
+# configure the root conda environment
+RUN conda config --add channels conda-forge
+RUN conda install --quiet --yes \
+    jupyter_contrib_nbextensions==0.3.3 \
+    nb_conda==2.2.1 \
+    nbdime==0.3.0 \
+    pyodbc==4.0.17 \
+    sqlparse==0.2.3 \
+    xlrd==1.0.0 \
     && conda clean -a
-ENV PATH /opt/conda/envs/py3/bin:$PATH
+RUN pip install jupyterhub==0.8.0.b4
 
+# configure ndbime to work with git for handling notebook diffs and merges nicely
+RUN nbdime config-git --enable --global
 
-## Install pip
-#RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
-#    python get-pip.py && \
-#    rm get-pip.py
-#
-## Add SNI support to Python
-#RUN pip --no-cache-dir install \
-#        pyopenssl \
-#        ndg-httpsclient \
-#        pyasn1
-#
-## Install useful Python packages using apt-get to avoid version incompatibilities with Tensorflow binary
-## especially numpy, scipy, skimage and sklearn (see https://github.com/tensorflow/tensorflow/issues/2034)
-#RUN apt-get update && apt-get install -y \
-#        python-numpy \
-#        python-scipy \
-#        python-nose \
-#        python-h5py \
-#        python-skimage \
-#        python-matplotlib \
-#        python-pandas \
-#        python-sklearn \
-#        python-sympy \
-#        && \
-#    apt-get clean && \
-#    apt-get autoremove && \
-#    rm -rf /var/lib/apt/lists/*
-#
-## Install other useful Python packages using pip
-#RUN pip --no-cache-dir install --upgrade ipython && \
-#    pip --no-cache-dir install \
-#        Cython \
-#        ipykernel \
-#        jupyter \
-#        path.py \
-#        Pillow \
-#        pygments \
-#        six \
-#        sphinx \
-#        wheel \
-#        zmq \
-#        && \
-#    python -m ipykernel.kernelspec
-#
-#
-## Install TensorFlow
-RUN pip install --ignore-installed --upgrade \
-    https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.3.0-cp36-cp36m-linux_x86_64.whl
+# configure some nbextensions
+RUN jupyter nbextension enable execute_time/ExecuteTime
+RUN jupyter nbextension enable toc2/main
+RUN jupyter labextension install jupyterlab_bokeh
+RUN jupyter labextension install @jupyterlab/vega2-extension
+RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager
 
-## Install dependencies for Caffe
-#RUN apt-get update && apt-get install -y \
-#        libboost-all-dev \
-#        libgflags-dev \
-#        libgoogle-glog-dev \
-#        libhdf5-serial-dev \
-#        libleveldb-dev \
-#        liblmdb-dev \
-#        libopencv-dev \
-#        libprotobuf-dev \
-#        libsnappy-dev \
-#        protobuf-compiler \
-#        && \
-#    apt-get clean && \
-#    apt-get autoremove && \
-#    rm -rf /var/lib/apt/lists/*
-#
-## Install Caffe
-#RUN git clone -b ${CAFFE_VERSION} --depth 1 https://github.com/BVLC/caffe.git /root/caffe && \
-#    cd /root/caffe && \
-#    cat python/requirements.txt | xargs -n1 pip install && \
+COPY conda-env-py36.yml conda-env-py36.yml
+RUN conda env create --quiet --file conda-env-py36.yml && conda clean -all --yes
+
+# build xgboost with gpu support and install in conda-env-py36-gpu
+#RUN git clone --recursive https://github.com/dmlc/xgboost /tmp/xgboost && \
+#    cd /tmp/xgboost && git checkout v0.7 && \
 #    mkdir build && cd build && \
-#    cmake -DUSE_CUDNN=1 -DBLAS=Open .. && \
-#    make -j"$(nproc)" all && \
-#    make install
-#
-## Set up Caffe environment variables
-#ENV CAFFE_ROOT=/root/caffe
-#ENV PYCAFFE_ROOT=$CAFFE_ROOT/python
-#ENV PYTHONPATH=$PYCAFFE_ROOT:$PYTHONPATH \
-#    PATH=$CAFFE_ROOT/build/tools:$PYCAFFE_ROOT:$PATH
-#
-#RUN echo "$CAFFE_ROOT/build/lib" >> /etc/ld.so.conf.d/caffe.conf && ldconfig
-#
-#
-## Install Theano and set up Theano config (.theanorc) for CUDA and OpenBLAS
-#RUN pip --no-cache-dir install git+git://github.com/Theano/Theano.git@${THEANO_VERSION} && \
-#    \
-#    echo "[global]\ndevice=gpu\nfloatX=float32\noptimizer_including=cudnn\nmode=FAST_RUN \
-#        \n[lib]\ncnmem=0.95 \
-#        \n[nvcc]\nfastmath=True \
-#        \n[blas]\nldflag = -L/usr/lib/openblas-base -lopenblas \
-#        \n[DebugMode]\ncheck_finite=1" \
-#    > /root/.theanorc
-#
-#
-## Install Keras
-#RUN pip --no-cache-dir install git+git://github.com/fchollet/keras.git@${KERAS_VERSION}
-#
-#
-## Install Lasagne
-#RUN pip --no-cache-dir install git+git://github.com/Lasagne/Lasagne.git@${LASAGNE_VERSION}
-#
-#
-## Install Torch
-#RUN git clone https://github.com/torch/distro.git /root/torch --recursive && \
-#    cd /root/torch && \
-#    bash install-deps && \
-#    yes no | ./install.sh
-#
-## Export the LUA evironment variables manually
-#ENV LUA_PATH='/root/.luarocks/share/lua/5.1/?.lua;/root/.luarocks/share/lua/5.1/?/init.lua;/root/torch/install/share/lua/5.1/?.lua;/root/torch/install/share/lua/5.1/?/init.lua;./?.lua;/root/torch/install/share/luajit-2.1.0-beta1/?.lua;/usr/local/share/lua/5.1/?.lua;/usr/local/share/lua/5.1/?/init.lua' \
-#    LUA_CPATH='/root/.luarocks/lib/lua/5.1/?.so;/root/torch/install/lib/lua/5.1/?.so;./?.so;/usr/local/lib/lua/5.1/?.so;/usr/local/lib/lua/5.1/loadall.so' \
-#    PATH=/root/torch/install/bin:$PATH \
-#    LD_LIBRARY_PATH=/root/torch/install/lib:$LD_LIBRARY_PATH \
-#    DYLD_LIBRARY_PATH=/root/torch/install/lib:$DYLD_LIBRARY_PATH
-#ENV LUA_CPATH='/root/torch/install/lib/?.so;'$LUA_CPATH
-#
-## Install the latest versions of nn, cutorch, cunn, cuDNN bindings and iTorch
-#RUN luarocks install nn && \
-#    luarocks install cutorch && \
-#    luarocks install cunn && \
-#    luarocks install loadcaffe && \
-#    \
-#    cd /root && git clone https://github.com/soumith/cudnn.torch.git && cd cudnn.torch && \
-#    git checkout R4 && \
-#    luarocks make && \
-#    \
-#    cd /root && git clone https://github.com/facebook/iTorch.git && \
-#    cd iTorch && \
-#    luarocks make
-#
-## Install OpenCV
-#RUN git clone --depth 1 https://github.com/opencv/opencv.git /root/opencv && \
-#    cd /root/opencv && \
-#    mkdir build && \
-#    cd build && \
-#    cmake -DWITH_QT=ON -DWITH_OPENGL=ON -DFORCE_VTK=ON -DWITH_TBB=ON -DWITH_GDAL=ON -DWITH_XINE=ON -DBUILD_EXAMPLES=ON .. && \
-#    make -j"$(nproc)"  && \
-#    make install && \
-#    ldconfig && \
-#    echo 'ln /dev/null /dev/raw1394' >> ~/.bashrc
+#    cmake .. -DUSE_CUDA=ON -DCUDA_TOOLKIT_ROOT_DIR=$CUDA_TOOLKIT_ROOT_DIR && \
+#    make -j && \
+#    cd ../python-package && /opt/conda/envs/py36-gpu/bin/python setup.py install
 
-# Set up notebook config
-#COPY jupyter_notebook_config.py /root/.jupyter/
-ONBUILD ADD jupyterhub_config.py /srv/jupyterhub/jupyterhub_config.py
+# And finally, back to running as the user
+USER $NB_USER
 
-# Expose Ports for TensorBoard (6006), Ipython (8888)
-EXPOSE 6006 8888
+ENV JOBLIB_TEMP_FOLDER /tmp/joblib_cache
 
-RUN mkdir -p /srv/jupyterhub/
-WORKDIR /srv/jupyterhub/
-CMD ["jupyterhub", "-f", "/srv/jupyterhub/jupyterhub_config.py"]
+# Open additional port for TensorBoard
+EXPOSE 6006
