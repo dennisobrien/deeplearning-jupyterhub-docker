@@ -22,12 +22,12 @@ This does require that you have nvidia gpu driver and cuda driver installed.
 
 Build:
 ``` 
-$ docker build -t deeplearning-jupyterhub-docker:1.0 -f Dockerfile .
+$ docker build -t deeplearning-jupyterhub-docker:latest -f Dockerfile .
 ```
 
 Run
 ``` 
-$ nvidia-docker run -it -p 8888:8888 -p 6006:6006 -v ~/workspace:/root/workspace deeplearning-jupyterhub-docker:1.0 bash
+$ nvidia-docker run -it -p 8888:8888 -p 6006:6006 -v ~/workspace:/root/workspace deeplearning-jupyterhub-docker:latest bash
 ```
 
 ## Updating conda environments
