@@ -27,7 +27,7 @@ $ docker build -t deeplearning-jupyterhub-docker:latest -f Dockerfile .
 
 Run
 ``` 
-$ nvidia-docker run -it -p 8888:8888 -p 6006:6006 -v ~/workspace:/root/workspace deeplearning-jupyterhub-docker:latest bash
+$ docker run -it --gpus all -p 8888:8888 -p 6006:6006 -v ~/workspace:/root/workspace deeplearning-jupyterhub-docker:latest bash
 ```
 
 ## Updating conda environments
