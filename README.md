@@ -4,19 +4,11 @@ Docker file for deep learning and JupyterHub
 
 ## Prerequisites
 
-### nvidia-docker
+### docker with nvidia support
 
-In order to make the GPU available to the docker container, install
-the CLI provided by nvidia.
+Follow the instructions from the TensorFlow project on configuring Docker with GPU support.
 
-- https://github.com/NVIDIA/nvidia-docker
-
-### nvidia drivers
-
-This does require that you have nvidia gpu driver and cuda driver installed.
-
-- http://www.linuxandubuntu.com/home/how-to-install-latest-nvidia-drivers-in-linux
-- http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
+- https://www.tensorflow.org/install/docker#tensorflow_docker_requirements
 
 ## Building and running
 
@@ -25,9 +17,17 @@ Build:
 $ docker build -t deeplearning-jupyterhub-docker:latest -f Dockerfile .
 ```
 
-Run
+Run:
 ``` 
-$ nvidia-docker run -it -p 8888:8888 -p 6006:6006 -v ~/workspace:/root/workspace deeplearning-jupyterhub-docker:latest bash
+$ docker run --gpus all -it -p 8888:8888 -p 6006:6006 -v $(realpath ~/workspace):/home/jovyan/workspace deeplearning-jupyterhub-docker:latest bash
+```
+
+## Running remotely
+
+Enable ssh port forwarding
+
+```
+$ ssh -L 8888:localhost:8888 username@domain
 ```
 
 ## Updating conda environments
